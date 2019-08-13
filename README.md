@@ -1,5 +1,5 @@
 # sitemap_gen
-Google sitemap generator ported to python3
+Google sitemap generator ported to python 3
 
 The sitemap_gen.py script analyzes your web server and generates one or more
 Sitemap files.  These files are XML listings of content you make available on
