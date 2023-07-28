@@ -374,15 +374,12 @@ class Output(object):
     self._verbose      = 0                   # Level of verbosity
   #end def __init__
 
-  def Log(self):
-    """ Log statistics about the files found. """
-    if self._counts:
-      output.Log('Count of file extensions on URLs:', 1)
-      set = list(self._counts.keys())
-      set = [str(i, 'utf-8') if isinstance(i, bytes) else i for i in set]
-      set.sort()
-      for ext in set:
-        output.Log('  %s : %d' % (ext, self._counts[ext]), 1)
+  def Log(self, text, level):
+    """ Output a blurb of diagnostic text, if the verbose level allows it """
+    if text:
+      text = encoder.NarrowText(text, None)
+      if self._verbose >= level:
+        print(text.decode())
   #end def Log
 
   def Warn(self, text):
