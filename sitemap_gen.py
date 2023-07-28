@@ -374,22 +374,27 @@ class Output(object):
     self._verbose      = 0                   # Level of verbosity
   #end def __init__
 
-  def Log(self, text, level):
-    """ Output a blurb of diagnostic text, if the verbose level allows it """
-    if text:
-      text = encoder.NarrowText(text, None)
-      if self._verbose >= level:
-        print(text.decode())
+  def Log(self):
+    """ Log statistics about the files found. """
+    if self._counts:
+      output.Log('Count of file extensions on URLs:', 1)
+      set = list(self._counts.keys())
+      set = [str(i, 'utf-8') if isinstance(i, bytes) else i for i in set]
+      set.sort()
+      for ext in set:
+        output.Log('  %s : %d' % (ext, self._counts[ext]), 1)
   #end def Log
 
   def Warn(self, text):
     """ Output and count a warning.  Suppress duplicate warnings. """
     if text:
       text = encoder.NarrowText(text, None)
-      hash = md5(text).digest()
+      if isinstance(text, bytes):
+        text = text.decode()
+      hash = md5(text.encode()).digest()
       if hash not in self._warns_shown:
         self._warns_shown[hash] = 1
-        print('[WARNING] ' + text.decode())
+        print('[WARNING] ' + text)
       else:
         self.Log('(suppressed) [WARNING] ' + text, 3)
       self.num_warns = self.num_warns + 1
@@ -551,6 +556,8 @@ class URL(object):
     if allow_fragment:
       self.loc = urllib.parse.urljoin(base_url, self.loc)
     if not self.loc.startswith(base_url):
+      if isinstance(self.loc, bytes):
+        self.loc = self.loc.decode()
       output.Warn('Discarded URL for not starting with the base_url: %s' %
                   self.loc)
       self.loc = None
@@ -1601,11 +1608,11 @@ class FilePathGenerator(object):
 
   def GeneratePath(self, instance):
     """ Generates the iterations, as described above. """
-    prefix = self._path + self._prefix
+    prefix = str(self._path, 'utf-8') + str(self._prefix, 'utf-8')
     if type(instance) == int:
       if instance:
-        return '%s%d%s' % (prefix, instance, self._suffix)
-      return prefix + self._suffix
+        return '%s%d%s' % (prefix, instance, str(self._suffix, 'utf-8'))
+      return prefix + str(self._suffix, 'utf-8')
     return prefix + instance
   #end def GeneratePath
 
@@ -1637,8 +1644,7 @@ class PerURLStatistics(object):
   """ Keep track of some simple per-URL statistics, like file extension. """
 
   def __init__(self):
-    self._extensions  = {}                  # Count of extension instances
-  #end def __init__
+    self._extensions  = {}  # Count of extension instances
 
   def Consume(self, url):
     """ Log some stats for the URL.  At the moment, that means extension. """
@@ -1665,28 +1671,19 @@ class PerURLStatistics(object):
       i = path.rfind(b'.')
       if i > 0:
         assert i < len(path)
-        ext = path[i:].lower()
-        if ext in self._extensions:
-          self._extensions[ext] = self._extensions[ext] + 1
-        else:
-          self._extensions[ext] = 1
+        ext = path[i:].lower().decode('utf-8')
+        self._extensions[ext] = self._extensions.get(ext, 0) + 1
       else:
-        if '(no extension)' in self._extensions:
-          self._extensions['(no extension)'] = self._extensions[
-            '(no extension)'] + 1
-        else:
-          self._extensions['(no extension)'] = 1
-  #end def Consume
+        self._extensions['(no extension)'] = self._extensions.get('(no extension)', 0) + 1
 
   def Log(self):
     """ Dump out stats to the output. """
-    if len(self._extensions):
+    if self._extensions:
       output.Log('Count of file extensions on URLs:', 1)
       set = list(self._extensions.keys())
       set.sort()
       for ext in set:
         output.Log(' %7d  %s' % (self._extensions[ext], ext), 1)
-  #end def Log
 
 class Sitemap(xml.sax.handler.ContentHandler):
   """
@@ -1844,61 +1841,66 @@ class Sitemap(xml.sax.handler.ContentHandler):
   #end def ConsumeURL
 
   def FlushSet(self):
-    """
-    Flush the current set of URLs to the output.  This is a little
-    slow because we like to sort them all and normalize the priorities
-    before dumping.
-    """
+      """
+      Flush the current set of URLs to the output.  This is a little
+      slow because we like to sort them all and normalize the priorities
+      before dumping.
+      """
 
-    # Sort and normalize
-    output.Log('Sorting and normalizing collected URLs.', 1)
-    self._set.sort(key=lambda x:x.loc)
+      # Sort and normalize
+      output.Log('Sorting and normalizing collected URLs.', 1)
+      self._set.sort(key=lambda x:x.loc)
 
-    for url in self._set:
-      hash = url.MakeHash()
-      dup = self._urls[hash]
-      if dup > 0:
-        self._urls[hash] = -1
-        if not url.priority:
-          url.priority = '%.4f' % (float(dup) / float(self._dup_max))
-
-    # Get the filename we're going to write to
-    filename = self._filegen.GeneratePath(self._sitemaps)
-    if not filename:
-      output.Fatal('Unexpected: Couldn\'t generate output filename.')
-    self._sitemaps = self._sitemaps + 1
-    output.Log('Writing Sitemap file "%s" with %d URLs' %
-        (filename.decode(), len(self._set)), 1)
-
-    # Write to it
-    frame = None
-    file  = None
-
-    try:
-      if self._filegen.is_gzip:
-        basename = os.path.basename(filename);
-        frame = open(filename, 'wb')
-        file = gzip.GzipFile(fileobj=frame, filename=basename, mode='wb')
-      else:
-        file = open(filename, 'wt')
-
-      file.write(str.encode(SITEMAP_HEADER))
       for url in self._set:
-        url.WriteXML(file)
-      file.write(str.encode(SITEMAP_FOOTER))
+          hash = url.MakeHash()
+          dup = self._urls[hash]
+          if dup > 0:
+              self._urls[hash] = -1
+              if not url.priority:
+                  url.priority = '%.4f' % (float(dup) / float(self._dup_max))
 
-      file.close()
-      if frame:
-        frame.close()
+      # Get the filename we're going to write to
+      filename = self._filegen.GeneratePath(self._sitemaps)
+      if not filename:
+          output.Fatal('Unexpected: Couldn\'t generate output filename.')
+      self._sitemaps = self._sitemaps + 1
 
+      # Convert filename to string if it's in bytes
+      if isinstance(filename, bytes):
+          filename = filename.decode()
+
+      output.Log('Writing Sitemap file "%s" with %d URLs' %
+          (filename, len(self._set)), 1)
+
+      # Write to it
       frame = None
       file  = None
-    except IOError:
-      output.Fatal('Couldn\'t write out to file: %s' % filename)
-    os.chmod(filename, 0o644)
 
-    # Flush
-    self._set = []
+      try:
+          if self._filegen.is_gzip:
+              basename = os.path.basename(filename)
+              frame = open(filename, 'wb')
+              file = gzip.GzipFile(fileobj=frame, filename=basename, mode='wb')
+          else:
+              file = open(filename, 'wt')
+
+          file.write(str.encode(SITEMAP_HEADER))
+          for url in self._set:
+              url.WriteXML(file)
+          file.write(str.encode(SITEMAP_FOOTER))
+
+          file.close()
+          if frame:
+              frame.close()
+
+          frame = None
+          file  = None
+      except IOError:
+          output.Fatal('Couldn\'t write out to file: %s' % filename)
+      os.chmod(filename, 0o644)
+
+      # Flush
+      self._set = []
   #end def FlushSet
 
   def WriteIndex(self):
