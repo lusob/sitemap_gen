@@ -1606,26 +1606,28 @@ class FilePathGenerator(object):
   def GeneratePath(self, instance):
     """ Generates the iterations, as described above. """
     prefix = str(self._path, 'utf-8') + str(self._prefix, 'utf-8')
+    suffix = self._suffix.decode('utf-8') if isinstance(self._suffix, bytes) else str(self._suffix, 'utf-8')
+    print(f"GeneratePath: prefix={prefix}, suffix={suffix}, instance={instance}")
     if type(instance) == int:
       if instance:
-        return '%s%d%s' % (prefix, instance, str(self._suffix, 'utf-8'))
-      return prefix + str(self._suffix, 'utf-8')
+        return '%s%d%s' % (prefix, instance, suffix)
+      return prefix + suffix
     return prefix + instance
-  #end def GeneratePath
 
   def GenerateURL(self, instance, root_url):
     """ Generates iterations, but as a URL instead of a path. """
     prefix = root_url + self._prefix.decode('utf-8')
+    suffix = self._suffix.decode('utf-8') if isinstance(self._suffix, bytes) else str(self._suffix, 'utf-8')
+    print(f"GenerateURL: prefix={prefix}, suffix={suffix}, instance={instance}")
     retval = None
     if type(instance) == int:
       if instance:
-        retval = '%s%d%s' % (prefix, instance, self._suffix)
+        retval = '%s%d%s' % (prefix, instance, suffix)
       else:
-        retval = prefix + self._suffix.decode('utf-8')
+        retval = prefix + suffix
     else:
       retval = prefix + instance
     return URL.Canonicalize(retval)
-  #end def GenerateURL
 
   def GenerateWildURL(self, root_url):
     """ Generates a wildcard that should match all our iterations """
@@ -1668,19 +1670,28 @@ class PerURLStatistics(object):
       i = path.rfind(b'.')
       if i > 0:
         assert i < len(path)
-        ext = path[i:].lower().decode('utf-8')
-        self._extensions[ext] = self._extensions.get(ext, 0) + 1
+        ext = path[i:].lower()
+        if ext in self._extensions:
+          self._extensions[ext] = self._extensions[ext] + 1
+        else:
+          self._extensions[ext] = 1
       else:
-        self._extensions['(no extension)'] = self._extensions.get('(no extension)', 0) + 1
+        if '(no extension)' in self._extensions:
+          self._extensions['(no extension)'] = self._extensions[
+            '(no extension)'] + 1
+        else:
+          self._extensions['(no extension)'] = 1
+  #end def Consume
 
   def Log(self):
     """ Dump out stats to the output. """
     if self._extensions:
       output.Log('Count of file extensions on URLs:', 1)
-      set = list(self._extensions.keys())
-      set.sort()
-      for ext in set:
-        output.Log(' %7d  %s' % (self._extensions[ext], ext), 1)
+      extensions_dict = {ext.decode() if isinstance(ext, bytes) else ext : self._extensions[ext] for ext in self._extensions.keys()}
+      extensions = list(extensions_dict.keys())
+      extensions.sort()
+      for ext in extensions:
+        output.Log(' %7d  %s' % (extensions_dict[ext], ext), 1)
 
 class Sitemap(xml.sax.handler.ContentHandler):
   """
